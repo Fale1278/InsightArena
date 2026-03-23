@@ -8,6 +8,7 @@ import HeroSection from "@/component/Homepage/HeroSection";
 import HowItWorksSection from "@/component/Homepage/HowItWorksSection";
 
 import ReputationSection from "@/component/Homepage/ReputationSection";
+import Faq from "@/component/Homepage/Faq";
 
 export default function Home() {
   return (
@@ -68,6 +69,7 @@ export default function Home() {
           <ReputationSection />
 
           <HowItWorksSection />
+          <Faq />
           <Footer />
         </div>
       </div>
