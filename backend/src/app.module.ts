@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { CommonModule } from './common/common.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import { validate } from './config/env.validation';
 import { AuthModule } from './auth/auth.module';
 
@@ -44,6 +45,10 @@ import { AuthModule } from './auth/auth.module';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

@@ -46,27 +46,42 @@ describe('JwtStrategy', () => {
       });
       jest.spyOn(usersRepository, 'findOneBy').mockResolvedValue(user);
 
-      const payload: JwtPayload = { sub: 'uuid-123', stellar_address: 'GABC123XYZ' };
+      const payload: JwtPayload = {
+        sub: 'uuid-123',
+        stellar_address: 'GABC123XYZ',
+      };
       const result = await strategy.validate(payload);
 
-      expect(usersRepository.findOneBy).toHaveBeenCalledWith({ id: 'uuid-123' });
+      expect(usersRepository.findOneBy).toHaveBeenCalledWith({
+        id: 'uuid-123',
+      });
       expect(result).toBe(user);
     });
 
     it('throws UnauthorizedException (401) when user is not found in the database', async () => {
       jest.spyOn(usersRepository, 'findOneBy').mockResolvedValue(null);
 
-      const payload: JwtPayload = { sub: 'nonexistent-id', stellar_address: 'GABC...' };
-      await expect(strategy.validate(payload)).rejects.toThrow(UnauthorizedException);
+      const payload: JwtPayload = {
+        sub: 'nonexistent-id',
+        stellar_address: 'GABC...',
+      };
+      await expect(strategy.validate(payload)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('queries the database using the sub claim as the user id', async () => {
-      const user = Object.assign(new User(), { id: 'some-uuid', stellar_address: 'GXYZ' });
+      const user = Object.assign(new User(), {
+        id: 'some-uuid',
+        stellar_address: 'GXYZ',
+      });
       jest.spyOn(usersRepository, 'findOneBy').mockResolvedValue(user);
 
       await strategy.validate({ sub: 'some-uuid', stellar_address: 'GXYZ' });
 
-      expect(usersRepository.findOneBy).toHaveBeenCalledWith({ id: 'some-uuid' });
+      expect(usersRepository.findOneBy).toHaveBeenCalledWith({
+        id: 'some-uuid',
+      });
     });
   });
 
@@ -92,13 +107,13 @@ describe('JwtStrategy', () => {
       const extractor = ExtractJwt.fromAuthHeaderAsBearerToken();
       const mockReq = {
         headers: { authorization: 'Bearer valid.jwt.token' },
-      } as any;
+      } as unknown as Request;
       expect(extractor(mockReq)).toBe('valid.jwt.token');
     });
 
     it('returns null when Authorization header is missing', () => {
       const extractor = ExtractJwt.fromAuthHeaderAsBearerToken();
-      const mockReq = { headers: {} } as any;
+      const mockReq = { headers: {} } as unknown as Request;
       expect(extractor(mockReq)).toBeNull();
     });
 
@@ -106,7 +121,7 @@ describe('JwtStrategy', () => {
       const extractor = ExtractJwt.fromAuthHeaderAsBearerToken();
       const mockReq = {
         headers: { authorization: 'Basic some-credentials' },
-      } as any;
+      } as unknown as Request;
       expect(extractor(mockReq)).toBeNull();
     });
   });
