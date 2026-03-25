@@ -34,8 +34,9 @@ describe('Auth E2E — challenge → verify flow', () => {
         create: jest.Mock;
         save: jest.Mock;
     };
-    let authService: AuthService;
-    let jwtService: JwtService;
+    // Remove unused variables - they're not needed for the tests
+    // let authService: AuthService;
+    // let jwtService: JwtService;
 
     beforeAll(async () => {
         // Setup mock repository with proper implementations
@@ -91,8 +92,9 @@ describe('Auth E2E — challenge → verify flow', () => {
 
         await app.init();
 
-        authService = module.get<AuthService>(AuthService);
-        jwtService = module.get<JwtService>(JwtService);
+        // Remove these assignments since we're not using them
+        // authService = module.get<AuthService>(AuthService);
+        // jwtService = module.get<JwtService>(JwtService);
     });
 
     beforeEach(() => {
@@ -101,13 +103,13 @@ describe('Auth E2E — challenge → verify flow', () => {
 
         // Default mock implementations
         mockUsersRepository.findOneBy.mockResolvedValue(null);
-        mockUsersRepository.create.mockImplementation((dto) => {
+        mockUsersRepository.create.mockImplementation((dto: { stellar_address: string }) => {
             const user = new User();
             user.stellar_address = dto.stellar_address;
             user.id = 'e2e-uuid';
             return user;
         });
-        mockUsersRepository.save.mockImplementation((user) => {
+        mockUsersRepository.save.mockImplementation((user: User) => {
             return Promise.resolve({
                 ...user,
                 id: user.id || 'e2e-uuid',
@@ -131,6 +133,7 @@ describe('Auth E2E — challenge → verify flow', () => {
             .send({ stellar_address: address })
             .expect(200);
 
+        // Use type assertion to help TypeScript understand the response structure
         const { challenge } = challengeRes.body as { challenge: string };
         expect(challenge).toMatch(/^InsightArena:nonce:/);
 
@@ -172,6 +175,10 @@ describe('Auth E2E — challenge → verify flow', () => {
             .post('/auth/challenge')
             .send({ stellar_address: address })
             .expect(200);
+
+        // Use the response but don't store it in an unused variable
+        // The response is still valid even if we don't use it
+        // challengeRes is used implicitly by expect(200)
 
         // Try to verify with invalid signature
         await request(app.getHttpServer())
@@ -333,8 +340,8 @@ describe('Auth E2E — challenge → verify flow', () => {
         expect(challengeRes1.status).toBe(200);
         expect(challengeRes2.status).toBe(200);
 
-        const challenge1 = challengeRes1.body.challenge;
-        const challenge2 = challengeRes2.body.challenge;
+        const challenge1 = (challengeRes1.body as { challenge: string }).challenge;
+        const challenge2 = (challengeRes2.body as { challenge: string }).challenge;
 
         const sig1 = sign(kp1, challenge1);
         const sig2 = sign(kp2, challenge2);
