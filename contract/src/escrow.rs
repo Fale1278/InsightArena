@@ -467,7 +467,9 @@ mod escrow_tests {
                 .persistent()
                 .set(&DataKey::PredictorList(2), &predictors_two);
 
-            env.storage().persistent().set(&DataKey::MarketCount, &2_u64);
+            env.storage()
+                .persistent()
+                .set(&DataKey::MarketCount, &2_u64);
             env.storage().persistent().set(
                 &DataKey::Prediction(1, predictor_a.clone()),
                 &Prediction::new(
@@ -512,7 +514,9 @@ mod escrow_tests {
             env.storage()
                 .persistent()
                 .set(&DataKey::PredictorList(1), &predictors);
-            env.storage().persistent().set(&DataKey::MarketCount, &1_u64);
+            env.storage()
+                .persistent()
+                .set(&DataKey::MarketCount, &1_u64);
             env.storage().persistent().set(
                 &DataKey::Prediction(1, predictor.clone()),
                 &Prediction::new(
