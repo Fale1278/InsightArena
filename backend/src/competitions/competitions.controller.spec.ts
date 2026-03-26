@@ -39,6 +39,7 @@ describe('CompetitionsController', () => {
             create: jest.fn(),
             findAll: jest.fn(),
             findById: jest.fn(),
+            list: jest.fn(),
           },
         },
       ],
