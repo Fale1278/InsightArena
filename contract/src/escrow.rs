@@ -286,6 +286,7 @@ mod escrow_tests {
             100,
             10_000_000,
             100_000_000,
+            86_400,
         );
 
         env.as_contract(&client.address, || {

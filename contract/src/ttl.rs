@@ -106,6 +106,7 @@ mod tests {
             outcomes: vec![&env, symbol_short!("yes"), symbol_short!("no")],
             end_time: env.ledger().timestamp() + 1_000,
             resolution_time: env.ledger().timestamp() + 2_000,
+            dispute_window: 86_400,
             creator_fee_bps: 100,
             min_stake: 10_000_000,
             max_stake: 100_000_000,

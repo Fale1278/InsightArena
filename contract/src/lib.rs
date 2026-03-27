@@ -3,6 +3,7 @@
 pub mod config;
 pub mod errors;
 pub mod escrow;
+pub mod dispute;
 pub mod invite;
 pub mod market;
 pub mod oracle;
@@ -180,6 +181,31 @@ impl InsightArenaContract {
         market_id: u64,
     ) -> Result<(), InsightArenaError> {
         market::cancel_market(&env, caller, market_id)
+    }
+
+    // ── Dispute ───────────────────────────────────────────────────────────────
+
+    /// File a dispute within the market's post-resolution dispute window.
+    /// Locks `bond` in escrow and stores a `Dispute(market_id)` record.
+    pub fn raise_dispute(
+        env: Env,
+        disputer: Address,
+        market_id: u64,
+        bond: i128,
+    ) -> Result<(), InsightArenaError> {
+        dispute::raise_dispute(env, disputer, market_id, bond)
+    }
+
+    /// Resolve an active dispute (admin-only).
+    /// - `uphold=true`: return bond to disputer and reopen market for re-resolution.
+    /// - `uphold=false`: forfeit bond to treasury accounting.
+    pub fn resolve_dispute(
+        env: Env,
+        admin: Address,
+        market_id: u64,
+        uphold: bool,
+    ) -> Result<(), InsightArenaError> {
+        dispute::resolve_dispute(env, admin, market_id, uphold)
     }
 
     // ── Prediction ────────────────────────────────────────────────────────────
