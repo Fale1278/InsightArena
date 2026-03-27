@@ -48,10 +48,30 @@ pub enum DataKey {
     ProposalVote(u32, Address),
     /// Temporary storage lock for escrow operations (prevents reentrancy)
     EscrowLock,
-    /// Keyed by creator address. Tracks market creation/resolution stats for reputation.
-    CreatorStats(Address),
-    /// Singleton. Tracks cumulative XLM volume staked across all predictions.
+    /// Keyed by market_id. Stores an active dispute (if any) for that market.
+    Dispute(u64),
+    /// Singleton. Cumulative platform stake volume (stroops) for analytics.
     PlatformVolume,
+    /// Keyed by creator address. Aggregated creator reputation statistics.
+    CreatorStats(Address),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Dispute {
+    pub disputer: Address,
+    pub bond: i128,
+    pub filed_at: u64,
+}
+
+impl Dispute {
+    pub fn new(disputer: Address, bond: i128, filed_at: u64) -> Self {
+        Self {
+            disputer,
+            bond,
+            filed_at,
+        }
+    }
 }
 
 #[contracttype]
@@ -145,6 +165,8 @@ pub struct Market {
     pub resolution_time: u64,
     /// The final outcome, set only after the market is resolved. Defaults to None.
     pub resolved_outcome: Option<Symbol>,
+    /// Ledger timestamp when the market was resolved (set alongside `resolved_outcome`).
+    pub resolved_at: Option<u64>,
     /// Indicates whether the market has been closed (end_time passed) and is awaiting oracle resolution. Defaults to false.
     pub is_closed: bool,
     /// Indicates whether the market has been resolved and payouts processed. Defaults to false.
@@ -164,6 +186,8 @@ pub struct Market {
     pub max_stake: i128,
     /// The current number of unique participants holding a stake. Defaults to 0.
     pub participant_count: u32,
+    /// Dispute window duration in seconds after resolution.
+    pub dispute_window: u64,
 }
 
 impl Market {
@@ -183,6 +207,7 @@ impl Market {
         creator_fee_bps: u32,
         min_stake: i128,
         max_stake: i128,
+        dispute_window: u64,
     ) -> Self {
         Self {
             market_id,
@@ -195,6 +220,7 @@ impl Market {
             end_time,
             resolution_time,
             resolved_outcome: None,
+            resolved_at: None,
             is_closed: false,
             is_resolved: false,
             is_cancelled: false,
@@ -204,6 +230,7 @@ impl Market {
             min_stake,
             max_stake,
             participant_count: 0,
+            dispute_window,
         }
     }
 }

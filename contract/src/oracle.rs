@@ -58,6 +58,7 @@ pub fn resolve_market(
     // ── Update status and persist ─────────────────────────────────────────────
     market.is_resolved = true;
     market.resolved_outcome = Some(resolved_outcome.clone());
+    market.resolved_at = Some(now);
 
     env.storage()
         .persistent()
@@ -123,6 +124,7 @@ mod resolve_tests {
             outcomes: vec![env, symbol_short!("yes"), symbol_short!("no")],
             end_time: now + 1000,
             resolution_time: now + 2000,
+            dispute_window: 86_400,
             creator_fee_bps: 100,
             min_stake: 10_000_000,
             max_stake: 100_000_000,
@@ -147,6 +149,7 @@ mod resolve_tests {
         let market = client.get_market(&id);
         assert!(market.is_resolved);
         assert_eq!(market.resolved_outcome, Some(symbol_short!("yes")));
+        assert_eq!(market.resolved_at, Some(env.ledger().timestamp()));
     }
 
     #[test]

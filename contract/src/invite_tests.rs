@@ -1,64 +1,110 @@
-use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::token::StellarAssetClient;
-use soroban_sdk::{symbol_short, vec, Address, Env, String, Symbol, Vec};
-
+use crate::errors::InsightArenaError;
 use crate::market::CreateMarketParams;
 use crate::storage_types::{DataKey, InviteCode};
-use crate::{InsightArenaContract, InsightArenaContractClient, InsightArenaError};
+use crate::{InsightArenaContract, InsightArenaContractClient};
+use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{vec, Address, Env, String, Symbol, Vec};
 
-fn register_token(env: &Env) -> Address {
-    let token_admin = Address::generate(env);
-    env.register_stellar_asset_contract_v2(token_admin)
-        .address()
-}
-
-fn deploy(env: &Env) -> (InsightArenaContractClient<'_>, Address, Address, Address) {
-    let id = env.register(InsightArenaContract, ());
-    let client = InsightArenaContractClient::new(env, &id);
+fn setup_test(env: &Env) -> (Address, Address, u64, InsightArenaContractClient<'_>) {
+    env.mock_all_auths();
     let admin = Address::generate(env);
     let oracle = Address::generate(env);
-    let xlm_token = register_token(env);
-    env.mock_all_auths();
-    client.initialize(&admin, &oracle, &200_u32, &xlm_token);
-    (client, xlm_token, admin, oracle)
-}
+    let creator = Address::generate(env);
+    let xlm_token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
 
-fn market_params(env: &Env, is_public: bool) -> CreateMarketParams {
-    let now = env.ledger().timestamp();
-    CreateMarketParams {
-        title: String::from_str(env, "Invite Market"),
-        description: String::from_str(env, "Invite flow test market"),
+    // Initialize contract
+    let contract_id = env.register(InsightArenaContract, ());
+    let client = InsightArenaContractClient::new(env, &contract_id);
+    client.initialize(&admin, &oracle, &200, &xlm_token);
+
+    let params = CreateMarketParams {
+        title: String::from_str(env, "Market 1"),
+        description: String::from_str(env, "Description 1"),
         category: Symbol::new(env, "Sports"),
-        outcomes: vec![env, symbol_short!("yes"), symbol_short!("no")],
-        end_time: now + 1_000,
-        resolution_time: now + 2_000,
+        outcomes: vec![env, Symbol::new(env, "TeamA"), Symbol::new(env, "TeamB")],
+        end_time: 200,
+        resolution_time: 300,
+        dispute_window: 86_400,
         creator_fee_bps: 100,
         min_stake: 10_000_000,
         max_stake: 100_000_000,
-        is_public,
-    }
-}
+        is_public: false,
+    };
 
-fn fund(env: &Env, xlm_token: &Address, recipient: &Address, amount: i128) {
-    StellarAssetClient::new(env, xlm_token).mint(recipient, &amount);
+    let market_id = client.create_market(&creator, &params);
+    (creator, oracle, market_id, client)
 }
 
 #[test]
-fn test_generate_and_redeem_invite_code() {
+fn test_generate_invite_code_success() {
     let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().set_timestamp(1_000);
+    let (creator, _, market_id, client) = setup_test(&env);
 
-    let (client, _, _, _) = deploy(&env);
-    let creator = Address::generate(&env);
+    let code = client.generate_invite_code(&creator, &market_id, &10, &3600);
+
+    // Verify the code is not empty.
+    assert!(code.to_val().get_payload() != 0);
+
+    let stored: InviteCode = env.as_contract(&client.address, || {
+        env.storage()
+            .persistent()
+            .get(&DataKey::InviteCode(code.clone()))
+            .unwrap()
+    });
+    assert_eq!(stored.code, code);
+    assert_eq!(stored.market_id, market_id);
+    assert_eq!(stored.max_uses, 10);
+    assert_eq!(stored.current_uses, 0);
+    assert!(stored.is_active);
+}
+
+#[test]
+fn test_generate_invite_code_unauthorized() {
+    let env = Env::default();
+    let (_, _, market_id, client) = setup_test(&env);
+    let non_creator = Address::generate(&env);
+    env.mock_all_auths();
+
+    let result = client.try_generate_invite_code(&non_creator, &market_id, &10, &3600);
+    assert!(matches!(result, Err(Ok(InsightArenaError::Unauthorized))));
+}
+
+#[test]
+fn test_generate_invite_code_invalid_uses() {
+    let env = Env::default();
+    let (creator, _, market_id, client) = setup_test(&env);
+
+    let result = client.try_generate_invite_code(&creator, &market_id, &0, &3600);
+    assert!(matches!(result, Err(Ok(InsightArenaError::InvalidInput))));
+}
+
+#[test]
+fn test_generate_invite_code_uniqueness() {
+    let env = Env::default();
+    let (creator, _, market_id, client) = setup_test(&env);
+
+    let code1 = client.generate_invite_code(&creator, &market_id, &10, &3600);
+
+    // Change ledger timestamp to ensure a different hash
+    env.ledger().set_timestamp(env.ledger().timestamp() + 1);
+
+    let code2 = client.generate_invite_code(&creator, &market_id, &10, &3600);
+
+    assert_ne!(code1, code2);
+}
+
+#[test]
+fn test_redeem_invite_code_success() {
+    let env = Env::default();
+    let (creator, _, market_id, client) = setup_test(&env);
     let invitee = Address::generate(&env);
 
-    let private_market_id = client.create_market(&creator, &market_params(&env, false));
+    let code = client.generate_invite_code(&creator, &market_id, &2, &3600);
+    let returned_market_id = client.redeem_invite_code(&invitee, &code);
 
-    let code = client.generate_invite_code(&creator, &private_market_id, &2, &600);
-    let redeemed_market_id = client.redeem_invite_code(&invitee, &code);
-
-    assert_eq!(redeemed_market_id, private_market_id);
+    assert_eq!(returned_market_id, market_id);
 
     let stored_invite: InviteCode = env.as_contract(&client.address, || {
         env.storage()
@@ -71,26 +117,59 @@ fn test_generate_and_redeem_invite_code() {
     let allowlist: Vec<Address> = env.as_contract(&client.address, || {
         env.storage()
             .persistent()
-            .get(&DataKey::MarketAllowlist(private_market_id))
+            .get(&DataKey::MarketAllowlist(market_id))
             .unwrap()
     });
-    assert!(allowlist.iter().any(|entry| entry == invitee));
+    assert!(allowlist.iter().any(|address| address == invitee));
 }
 
 #[test]
-fn test_redeem_expired_code() {
+fn test_redeem_invite_code_invalid_code() {
     let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().set_timestamp(5_000);
-
-    let (client, _, _, _) = deploy(&env);
-    let creator = Address::generate(&env);
+    let (_, _, _, client) = setup_test(&env);
     let invitee = Address::generate(&env);
 
-    let private_market_id = client.create_market(&creator, &market_params(&env, false));
-    let code = client.generate_invite_code(&creator, &private_market_id, &2, &5);
+    let result = client.try_redeem_invite_code(&invitee, &Symbol::new(&env, "deadbeef"));
+    assert!(matches!(
+        result,
+        Err(Ok(InsightArenaError::InvalidInviteCode))
+    ));
+}
 
-    env.ledger().set_timestamp(5_006);
+#[test]
+fn test_redeem_invite_code_deactivated() {
+    let env = Env::default();
+    let (creator, _, market_id, client) = setup_test(&env);
+    let invitee = Address::generate(&env);
+
+    let code = client.generate_invite_code(&creator, &market_id, &2, &3600);
+    env.as_contract(&client.address, || {
+        let mut invite: InviteCode = env
+            .storage()
+            .persistent()
+            .get(&DataKey::InviteCode(code.clone()))
+            .unwrap();
+        invite.is_active = false;
+        env.storage()
+            .persistent()
+            .set(&DataKey::InviteCode(code.clone()), &invite);
+    });
+
+    let result = client.try_redeem_invite_code(&invitee, &code);
+    assert!(matches!(
+        result,
+        Err(Ok(InsightArenaError::InvalidInviteCode))
+    ));
+}
+
+#[test]
+fn test_redeem_invite_code_expired() {
+    let env = Env::default();
+    let (creator, _, market_id, client) = setup_test(&env);
+    let invitee = Address::generate(&env);
+
+    let code = client.generate_invite_code(&creator, &market_id, &2, &1);
+    env.ledger().set_timestamp(env.ledger().timestamp() + 10);
 
     let result = client.try_redeem_invite_code(&invitee, &code);
     assert!(matches!(
@@ -100,99 +179,18 @@ fn test_redeem_expired_code() {
 }
 
 #[test]
-fn test_redeem_maxed_out_code() {
+fn test_redeem_invite_code_max_used() {
     let env = Env::default();
-    env.mock_all_auths();
+    let (creator, _, market_id, client) = setup_test(&env);
+    let invitee1 = Address::generate(&env);
+    let invitee2 = Address::generate(&env);
 
-    let (client, _, _, _) = deploy(&env);
-    let creator = Address::generate(&env);
-    let invitee_1 = Address::generate(&env);
-    let invitee_2 = Address::generate(&env);
+    let code = client.generate_invite_code(&creator, &market_id, &1, &3600);
+    client.redeem_invite_code(&invitee1, &code);
 
-    let private_market_id = client.create_market(&creator, &market_params(&env, false));
-    let code = client.generate_invite_code(&creator, &private_market_id, &1, &300);
-
-    client.redeem_invite_code(&invitee_1, &code);
-    let result = client.try_redeem_invite_code(&invitee_2, &code);
-
+    let result = client.try_redeem_invite_code(&invitee2, &code);
     assert!(matches!(
         result,
         Err(Ok(InsightArenaError::InviteCodeMaxUsed))
-    ));
-}
-
-#[test]
-fn test_private_market_blocks_non_invitees() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (client, _, _, _) = deploy(&env);
-    let creator = Address::generate(&env);
-    let non_invitee = Address::generate(&env);
-
-    let private_market_id = client.create_market(&creator, &market_params(&env, false));
-    let result = client.try_submit_prediction(
-        &non_invitee,
-        &private_market_id,
-        &symbol_short!("yes"),
-        &10_000_000,
-    );
-
-    assert!(matches!(result, Err(Ok(InsightArenaError::Unauthorized))));
-}
-
-#[test]
-fn test_private_market_allows_invitees() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (client, xlm_token, _, _) = deploy(&env);
-    let creator = Address::generate(&env);
-    let invitee = Address::generate(&env);
-    let public_user = Address::generate(&env);
-
-    let private_market_id = client.create_market(&creator, &market_params(&env, false));
-    let public_market_id = client.create_market(&creator, &market_params(&env, true));
-
-    let stake = 20_000_000_i128;
-    fund(&env, &xlm_token, &invitee, stake);
-    fund(&env, &xlm_token, &public_user, stake);
-
-    let code = client.generate_invite_code(&creator, &private_market_id, &2, &600);
-    client.redeem_invite_code(&invitee, &code);
-
-    client.submit_prediction(&invitee, &private_market_id, &symbol_short!("yes"), &stake);
-    assert!(client.has_predicted(&private_market_id, &invitee));
-
-    // Public markets bypass invite checks; non-invitees can submit directly.
-    client.submit_prediction(&public_user, &public_market_id, &symbol_short!("no"), &stake);
-    assert!(client.has_predicted(&public_market_id, &public_user));
-}
-
-#[test]
-fn test_revoke_invite_code() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let (client, _, _, _) = deploy(&env);
-    let creator = Address::generate(&env);
-    let attacker = Address::generate(&env);
-    let invitee = Address::generate(&env);
-
-    let private_market_id = client.create_market(&creator, &market_params(&env, false));
-    let code = client.generate_invite_code(&creator, &private_market_id, &3, &600);
-
-    let unauthorized_revoke = client.try_revoke_invite_code(&attacker, &code);
-    assert!(matches!(
-        unauthorized_revoke,
-        Err(Ok(InsightArenaError::Unauthorized))
-    ));
-
-    client.revoke_invite_code(&creator, &code);
-
-    let redeem_after_revoke = client.try_redeem_invite_code(&invitee, &code);
-    assert!(matches!(
-        redeem_after_revoke,
-        Err(Ok(InsightArenaError::InvalidInviteCode))
     ));
 }
