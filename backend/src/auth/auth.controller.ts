@@ -1,7 +1,10 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { GenerateChallengeDto } from './dto/generate-challenge.dto';
 import { VerifyChallengeDto } from './dto/verify-challenge.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { User } from '../users/entities/user.entity';
 
 @Controller('auth')
 export class AuthController {
@@ -23,5 +26,13 @@ export class AuthController {
       verifyChallengeDto.stellar_address,
       verifyChallengeDto.signed_challenge,
     );
+  }
+
+  // Authenticated route using @CurrentUser
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  getProfile(@CurrentUser() user: User) {
+    return user;
   }
 }
